@@ -13,4 +13,4 @@
 //
 //	client := httpclient.NewCachedClient("https://api.example.com")
 //	defer client.Stop()
-package main
+package httpclient
