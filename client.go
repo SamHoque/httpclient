@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"time"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 type Client struct {
@@ -30,6 +33,30 @@ func WithHeader(key, value string) Option {
 	}
 }
 
+// WithAuth enables cookie handling for authentication
+func WithAuth() Option {
+	return func(c *Client) {
+		jar, err := cookiejar.New(&cookiejar.Options{
+			PublicSuffixList: publicsuffix.List,
+		})
+		if err != nil {
+			// In practice this error is very unlikely, but we should handle it gracefully
+			jar, _ = cookiejar.New(nil)
+		}
+		c.client.Jar = jar
+	}
+}
+
+// RequestOption defines per-request configuration
+type RequestOption func(*http.Request)
+
+// WithRequestHeader adds a header for a single request
+func WithRequestHeader(key, value string) RequestOption {
+	return func(req *http.Request) {
+		req.Header.Set(key, value)
+	}
+}
+
 // NewClient creates a new HTTP client with default configurations
 func NewClient(baseURL string, opts ...Option) *Client {
 	c := &Client{
@@ -50,8 +77,8 @@ func NewClient(baseURL string, opts ...Option) *Client {
 }
 
 // doRequest performs the HTTP request
-func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
-	var reqBody bytes.Buffer // Create a buffer instead of a pointer
+func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}, opts ...RequestOption) (*http.Response, error) {
+	var reqBody bytes.Buffer
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
@@ -60,35 +87,40 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		reqBody.Write(jsonBody)
 	}
 
-	// Use &reqBody.Buffer for the request body - it's safe even when empty
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, &reqBody)
 	if err != nil {
 		return nil, err
 	}
 
+	// Set default headers
 	for k, v := range c.headers {
 		req.Header.Set(k, v)
+	}
+
+	// Apply per-request options
+	for _, opt := range opts {
+		opt(req)
 	}
 
 	return c.client.Do(req)
 }
 
 // Get performs a GET request
-func (c *Client) Get(ctx context.Context, path string) (*http.Response, error) {
-	return c.doRequest(ctx, http.MethodGet, path, nil)
+func (c *Client) Get(ctx context.Context, path string, opts ...RequestOption) (*http.Response, error) {
+	return c.doRequest(ctx, http.MethodGet, path, nil, opts...)
 }
 
 // Post performs a POST request
-func (c *Client) Post(ctx context.Context, path string, body interface{}) (*http.Response, error) {
-	return c.doRequest(ctx, http.MethodPost, path, body)
+func (c *Client) Post(ctx context.Context, path string, body interface{}, opts ...RequestOption) (*http.Response, error) {
+	return c.doRequest(ctx, http.MethodPost, path, body, opts...)
 }
 
 // Put performs a PUT request
-func (c *Client) Put(ctx context.Context, path string, body interface{}) (*http.Response, error) {
-	return c.doRequest(ctx, http.MethodPut, path, body)
+func (c *Client) Put(ctx context.Context, path string, body interface{}, opts ...RequestOption) (*http.Response, error) {
+	return c.doRequest(ctx, http.MethodPut, path, body, opts...)
 }
 
 // Delete performs a DELETE request
-func (c *Client) Delete(ctx context.Context, path string) (*http.Response, error) {
-	return c.doRequest(ctx, http.MethodDelete, path, nil)
+func (c *Client) Delete(ctx context.Context, path string, opts ...RequestOption) (*http.Response, error) {
+	return c.doRequest(ctx, http.MethodDelete, path, nil, opts...)
 }

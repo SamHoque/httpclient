@@ -1,6 +1,6 @@
 # HTTP Client Library
 
-A Go HTTP client library with built-in caching and automatic background updates.
+A Go HTTP client library with built-in caching, authentication, and automatic background updates.
 
 ## 🚀 Quick Start (2 minutes)
 
@@ -13,11 +13,42 @@ import "github.com/samhoque/httpclient"
 client := httpclient.NewClient(
     "https://api.example.com",
     httpclient.WithTimeout(10*time.Second),
+    httpclient.WithAuth(), // Enable cookie handling
 )
 
 // 3. Make requests
+// Basic request
 resp, err := client.Get(context.Background(), "/users")
-resp, err := client.Post(context.Background(), "/users", user)
+
+// Request with custom headers
+resp, err = client.Get(context.Background(), "/users",
+    httpclient.WithRequestHeader("X-Request-ID", "123"),
+)
+
+// POST with data
+resp, err = client.Post(context.Background(), "/users", user)
+```
+
+### Authentication Example
+```go
+// Create client with auth enabled
+client := httpclient.NewClient(
+    "https://api.example.com",
+    httpclient.WithAuth(),
+)
+
+// Login - cookies will be automatically saved
+loginData := struct {
+    Username string `json:"username"`
+    Password string `json:"password"`
+}{
+    Username: "user@example.com",
+    Password: "password123",
+}
+resp, err := client.Post(ctx, "/login", loginData)
+
+// Subsequent requests will automatically include saved cookies
+resp, err = client.Get(ctx, "/protected-endpoint")
 ```
 
 ### Cached HTTP Client
@@ -58,12 +89,26 @@ go get github.com/samhoque/httpclient
 ```go
 client := httpclient.NewClient(
     "https://api.example.com",
-    httpclient.WithHeader("Authorization", "Bearer token"),
+    httpclient.WithAuth(),
     httpclient.WithTimeout(5*time.Second),
 )
 ```
 
-### 2. Cached API Data with Auto-Updates
+### 2. Per-Request Headers
+```go
+// Add custom headers for specific requests
+resp, err := client.Get(ctx, "/users", 
+    httpclient.WithRequestHeader("X-Custom-Header", "value"),
+    httpclient.WithRequestHeader("X-Request-ID", "123"),
+)
+
+// Different headers for another request
+resp, err = client.Post(ctx, "/data", data,
+    httpclient.WithRequestHeader("Authorization", "Bearer token"),
+)
+```
+
+### 3. Cached API Data with Auto-Updates
 ```go
 client := httpclient.NewCachedClient("https://api.example.com")
 defer client.Stop()
@@ -80,16 +125,6 @@ err := client.SetupCachedEndpoint(
 )
 ```
 
-### 3. POST Request with JSON
-```go
-data := struct {
-    Name string `json:"name"`
-}{
-    Name: "John",
-}
-resp, err := client.Post(ctx, "/users", data)
-```
-
 ## ⚡️ Features At a Glance
 
 ### Basic Client
@@ -97,12 +132,30 @@ resp, err := client.Post(ctx, "/users", data)
 - ✅ Custom headers and timeouts
 - ✅ Context support
 - ✅ Clean, fluent API
+- ✅ Per-request headers
+- ✅ Cookie-based authentication
+
+### Authentication
+- ✅ Automatic cookie handling
+- ✅ Session persistence
+- ✅ Support for cookie-based auth flows
+- ✅ Per-request header customization
 
 ### Cached Client
 - ✅ Automatic background updates
 - ✅ In-memory caching
 - ✅ Configurable update schedules
 - ✅ Thread-safe operations
+
+## 🔧 Configuration Options
+
+### Client Options
+- `WithTimeout(duration)` - Set client timeout
+- `WithHeader(key, value)` - Add default headers
+- `WithAuth()` - Enable cookie handling
+
+### Request Options
+- `WithRequestHeader(key, value)` - Add headers to specific requests
 
 ## 📝 Common Cron Patterns
 
@@ -138,25 +191,23 @@ if err != nil {
 ## 🔍 Advanced Usage
 
 <details>
-<summary>Multiple Cached Endpoints</summary>
+<summary>Authentication with Custom Headers</summary>
 
 ```go
-client := httpclient.NewCachedClient("https://api.example.com")
-defer client.Stop()
+client := httpclient.NewClient(
+    "https://api.example.com",
+    httpclient.WithAuth(),
+)
 
-var users []UserData
-var posts []PostData
+// Login with custom headers
+resp, err := client.Post(ctx, "/login", loginData,
+    httpclient.WithRequestHeader("X-Device-ID", "device123"),
+)
 
-// Setup multiple endpoints
-err := client.SetupCachedEndpoint(ctx, CacheConfig{
-    Path:       "/users",
-    CronSpec:   "*/15 * * * *",
-}, &users)
-
-err = client.SetupCachedEndpoint(ctx, CacheConfig{
-    Path:       "/posts",
-    CronSpec:   "*/30 * * * *",
-}, &posts)
+// Subsequent authenticated requests
+resp, err = client.Get(ctx, "/profile",
+    httpclient.WithRequestHeader("X-Request-ID", "req123"),
+)
 ```
 </details>
 
@@ -166,9 +217,9 @@ err = client.SetupCachedEndpoint(ctx, CacheConfig{
 ```go
 client := httpclient.NewClient(
     "https://api.example.com",
+    httpclient.WithAuth(),
     httpclient.WithTimeout(5*time.Second),
     httpclient.WithHeader("X-API-Key", "key"),
-    httpclient.WithHeader("User-Agent", "MyApp/1.0"),
 )
 ```
 </details>
@@ -177,6 +228,7 @@ client := httpclient.NewClient(
 1. Always `defer client.Stop()` for cached clients
 2. Always `defer resp.Body.Close()` for responses
 3. Cache expiration is separate from update schedule
+4. Cookie handling requires `WithAuth()` option
 
 ## 🤝 Need Help?
 - Report issues: [GitHub Issues](https://github.com/samhoque/httpclient/issues)
